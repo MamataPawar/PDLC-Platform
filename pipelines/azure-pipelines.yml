@@ -1,0 +1,152 @@
+# ============================================================
+# Retail PDLC Platform — Azure Pipelines
+# All 5 stages: lint → ai-review → test → ai-testgen → publish
+# Variable groups: pdlc-secrets (CLAUDE_API_KEY, ADO_PAT)
+# Branching strategy: trunk-based, feature/* → main via PR
+# ============================================================
+
+trigger:
+  branches:
+    include:
+      - main
+  paths:
+    include:
+      - pdlc/**
+      - backend/**
+      - frontend/**
+
+pr:
+  branches:
+    include:
+      - main
+  paths:
+    include:
+      - pdlc/**
+      - backend/**
+      - frontend/**
+
+# ── Variable Groups (configure in ADO Library) ─────────────
+variables:
+  - group: pdlc-secrets           # CLAUDE_API_KEY, ADO_PAT
+  - group: pdlc-config            # PDLC_API_URL, ADO_ORG, ADO_PROJECT, ADO_REPO
+  - name: dotnetVersion
+    value: '9.0.x'
+  - name: nodeVersion
+    value: '20.x'
+  - name: backendPath
+    value: 'pdlc/backend'
+  - name: frontendPath
+    value: 'pdlc/frontend/pdlc-console'
+  - name: isPr
+    value: ${{ eq(variables['Build.Reason'], 'PullRequest') }}
+  - name: isMain
+    value: ${{ eq(variables['Build.SourceBranch'], 'refs/heads/main') }}
+
+# ── Pool ──────────────────────────────────────────────────────
+pool:
+  vmImage: 'ubuntu-latest'
+
+# ╔══════════════════════════════════════════════════════════╗
+# ║  STAGE 1: Build & Lint                                   ║
+# ║  Runs on: every push + every PR                          ║
+# ║  Blocks: all downstream stages                           ║
+# ╚══════════════════════════════════════════════════════════╝
+stages:
+  - stage: build_and_lint
+    displayName: '① Build & Lint'
+    condition: always()
+    jobs:
+      - template: templates/build-lint.yml
+        parameters:
+          dotnetVersion: $(dotnetVersion)
+          nodeVersion: $(nodeVersion)
+          backendPath: $(backendPath)
+          frontendPath: $(frontendPath)
+
+# ╔══════════════════════════════════════════════════════════╗
+# ║  STAGE 2: AI Code Review                                 ║
+# ║  Runs on: PR only                                        ║
+# ║  Advisory — posts comments, does NOT block merge         ║
+# ╚══════════════════════════════════════════════════════════╝
+  - stage: ai_code_review
+    displayName: '② AI Code Review (Advisory)'
+    dependsOn: build_and_lint
+    condition: |
+      and(
+        succeeded('build_and_lint'),
+        eq(variables['Build.Reason'], 'PullRequest')
+      )
+    jobs:
+      - template: templates/ai-code-review.yml
+        parameters:
+          pdlcApiUrl: $(PDLC_API_URL)
+          adoOrg: $(ADO_ORG)
+          adoProject: $(ADO_PROJECT)
+          adoRepo: $(ADO_REPO)
+          adoPat: $(ADO_PAT)
+          claudeApiKey: $(CLAUDE_API_KEY)
+          pullRequestId: $(System.PullRequest.PullRequestId)
+
+# ╔══════════════════════════════════════════════════════════╗
+# ║  STAGE 3: Test                                           ║
+# ║  Runs on: every push + PR                                ║
+# ║  Blocks: publish stage                                   ║
+# ╚══════════════════════════════════════════════════════════╝
+  - stage: test
+    displayName: '③ Test'
+    dependsOn: build_and_lint
+    condition: succeeded('build_and_lint')
+    jobs:
+      - template: templates/test.yml
+        parameters:
+          dotnetVersion: $(dotnetVersion)
+          nodeVersion: $(nodeVersion)
+          backendPath: $(backendPath)
+          frontendPath: $(frontendPath)
+
+# ╔══════════════════════════════════════════════════════════╗
+# ║  STAGE 4: AI Test Generation                             ║
+# ║  Runs on: merge to main only                             ║
+# ║  Commits generated test stubs to tests/generated/       ║
+# ╚══════════════════════════════════════════════════════════╝
+  - stage: ai_test_generation
+    displayName: '④ AI Test Generation'
+    dependsOn:
+      - test
+    condition: |
+      and(
+        succeeded('test'),
+        eq(variables['Build.SourceBranch'], 'refs/heads/main'),
+        ne(variables['Build.Reason'], 'PullRequest')
+      )
+    jobs:
+      - template: templates/ai-test-generation.yml
+        parameters:
+          pdlcApiUrl: $(PDLC_API_URL)
+          adoOrg: $(ADO_ORG)
+          adoProject: $(ADO_PROJECT)
+          adoRepo: $(ADO_REPO)
+          adoPat: $(ADO_PAT)
+          backendPath: $(backendPath)
+
+# ╔══════════════════════════════════════════════════════════╗
+# ║  STAGE 5: Publish Artifacts                              ║
+# ║  Runs on: main branch only, after test passes            ║
+# ╚══════════════════════════════════════════════════════════╝
+  - stage: publish_artifacts
+    displayName: '⑤ Publish Artifacts'
+    dependsOn:
+      - test
+    condition: |
+      and(
+        succeeded('test'),
+        eq(variables['Build.SourceBranch'], 'refs/heads/main'),
+        ne(variables['Build.Reason'], 'PullRequest')
+      )
+    jobs:
+      - template: templates/publish-artifacts.yml
+        parameters:
+          dotnetVersion: $(dotnetVersion)
+          nodeVersion: $(nodeVersion)
+          backendPath: $(backendPath)
+          frontendPath: $(frontendPath)

@@ -1,0 +1,94 @@
+# ── Template: Test ───────────────────────────────────────────
+# Runs xUnit (.NET) and Karma/Jasmine (Angular) tests.
+# Publishes results and coverage to ADO.
+# Hard gate — failure blocks publish stage.
+
+parameters:
+  - name: dotnetVersion
+    type: string
+  - name: nodeVersion
+    type: string
+  - name: backendPath
+    type: string
+  - name: frontendPath
+    type: string
+
+jobs:
+  - job: dotnet_tests
+    displayName: 'xUnit Tests (.NET)'
+    steps:
+      - task: UseDotNet@2
+        displayName: 'Install .NET ${{ parameters.dotnetVersion }}'
+        inputs:
+          version: ${{ parameters.dotnetVersion }}
+
+      - script: dotnet restore ${{ parameters.backendPath }}/Pdlc.sln
+        displayName: 'Restore'
+
+      - script: |
+          dotnet test ${{ parameters.backendPath }}/Pdlc.sln \
+            --no-restore \
+            --configuration Release \
+            --logger "trx;LogFileName=test-results.trx" \
+            --collect:"XPlat Code Coverage" \
+            --results-directory $(Agent.TempDirectory)/testresults \
+            --settings coverlet.runsettings \
+            -- DataCollectionRunSettings.DataCollectors.DataCollector.Configuration.Format=cobertura
+        displayName: 'Run xUnit tests with coverage'
+
+      - task: PublishTestResults@2
+        displayName: 'Publish xUnit results'
+        condition: always()
+        inputs:
+          testResultsFormat: 'VSTest'
+          testResultsFiles: '$(Agent.TempDirectory)/testresults/**/*.trx'
+          failTaskOnFailedTests: true
+          testRunTitle: 'PDLC .NET Unit Tests'
+
+      - task: PublishCodeCoverageResults@2
+        displayName: 'Publish code coverage'
+        condition: always()
+        inputs:
+          summaryFileLocation: '$(Agent.TempDirectory)/testresults/**/coverage.cobertura.xml'
+          failIfCoverageEmpty: false
+
+  - job: angular_tests
+    displayName: 'Karma/Jasmine Tests (Angular)'
+    steps:
+      - task: NodeTool@0
+        displayName: 'Install Node ${{ parameters.nodeVersion }}'
+        inputs:
+          versionSpec: ${{ parameters.nodeVersion }}
+
+      - script: npm ci
+        displayName: 'npm ci'
+        workingDirectory: ${{ parameters.frontendPath }}
+
+      - script: |
+          npx ng test \
+            --no-watch \
+            --no-progress \
+            --browsers ChromeHeadless \
+            --code-coverage \
+            --reporters=progress,junit \
+            --coverage-reporters=cobertura
+        displayName: 'Run Karma tests (headless Chrome)'
+        workingDirectory: ${{ parameters.frontendPath }}
+        env:
+          CHROME_BIN: '/usr/bin/google-chrome'
+
+      - task: PublishTestResults@2
+        displayName: 'Publish Karma results'
+        condition: always()
+        inputs:
+          testResultsFormat: 'JUnit'
+          testResultsFiles: '${{ parameters.frontendPath }}/test-results/junit.xml'
+          failTaskOnFailedTests: true
+          testRunTitle: 'PDLC Angular Unit Tests'
+
+      - task: PublishCodeCoverageResults@2
+        displayName: 'Publish Angular coverage'
+        condition: always()
+        inputs:
+          summaryFileLocation: '${{ parameters.frontendPath }}/coverage/cobertura-coverage.xml'
+          failIfCoverageEmpty: false

@@ -1,0 +1,75 @@
+# ── Template: AI Code Review ─────────────────────────────────
+# Calls the PDLC API /api/pdlc/pr-review/review endpoint.
+# Posts inline comments to the ADO PR via Claude.
+# Advisory stage — pipeline continues regardless of outcome.
+
+parameters:
+  - name: pdlcApiUrl
+    type: string
+  - name: adoOrg
+    type: string
+  - name: adoProject
+    type: string
+  - name: adoRepo
+    type: string
+  - name: adoPat
+    type: string
+  - name: claudeApiKey
+    type: string
+  - name: pullRequestId
+    type: string
+
+jobs:
+  - job: ai_pr_review
+    displayName: 'Claude PR Review'
+    continueOnError: true   # Advisory — never blocks merge
+    steps:
+      - script: |
+          echo "PR ID: ${{ parameters.pullRequestId }}"
+          echo "Project: ${{ parameters.adoProject }}"
+          echo "Repo: ${{ parameters.adoRepo }}"
+        displayName: 'Log PR context'
+
+      - script: |
+          # Call the PDLC API to trigger the Claude review
+          RESPONSE=$(curl --silent --fail --show-error \
+            --max-time 300 \
+            -X POST "${{ parameters.pdlcApiUrl }}/api/pdlc/pr-review/review" \
+            -H "Content-Type: application/json" \
+            -d '{
+              "adoProject":      "${{ parameters.adoProject }}",
+              "repository":      "${{ parameters.adoRepo }}",
+              "pullRequestId":   ${{ parameters.pullRequestId }},
+              "promptVersion":   "v1",
+              "postCommentsToAdo": true
+            }')
+
+          echo "Review response:"
+          echo "$RESPONSE" | python3 -c "
+          import json, sys
+          data = json.load(sys.stdin)
+          print(f'Comments posted: {data.get(\"commentsPosted\", 0)}')
+          print(f'Tokens used: {data.get(\"tokensUsed\", 0)}')
+          print(f'Model: {data.get(\"modelVersion\", \"unknown\")}')
+          "
+        displayName: 'Trigger Claude PR Review'
+        env:
+          CLAUDE_API_KEY: ${{ parameters.claudeApiKey }}
+          ADO_PAT: ${{ parameters.adoPat }}
+
+      - script: |
+          # Post a summary comment to the PR to indicate AI review ran
+          curl --silent \
+            -X POST "https://dev.azure.com/${{ parameters.adoOrg }}/${{ parameters.adoProject }}/_apis/git/repositories/${{ parameters.adoRepo }}/pullRequests/${{ parameters.pullRequestId }}/threads?api-version=7.1" \
+            -H "Content-Type: application/json" \
+            -H "Authorization: Basic $(echo -n :${{ parameters.adoPat }} | base64)" \
+            -d '{
+              "comments": [{
+                "parentCommentId": 0,
+                "content": "🤖 **AI Code Review complete.** Inline comments have been posted above.\n\n*This is an advisory review — it does not block merge.*",
+                "commentType": 1
+              }],
+              "status": "closed"
+            }'
+        displayName: 'Post AI review summary comment'
+        condition: always()

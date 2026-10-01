@@ -1,0 +1,173 @@
+using System.Net.Http.Json;
+using System.Text.Json;
+using System.Text.Json.Serialization;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
+using Pdlc.Domain.Interfaces;
+
+namespace Pdlc.Infrastructure.Ado;
+
+public sealed class AdoBoardsService : IAdoBoardsService
+{
+    private readonly HttpClient _http;
+    private readonly AdoOptions _options;
+    private readonly ILogger<AdoBoardsService> _logger;
+
+    private static readonly JsonSerializerOptions JsonOpts = new()
+    {
+        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+        DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
+    };
+
+    public AdoBoardsService(HttpClient http, IOptions<AdoOptions> options, ILogger<AdoBoardsService> logger)
+    {
+        _http = http;
+        _options = options.Value;
+        _logger = logger;
+    }
+
+    public async Task<AdoWorkItemResult> CreateWorkItemAsync(
+        string project,
+        Domain.Enums.AdoWorkItemType type,
+        string title,
+        string description,
+        IEnumerable<string>? tags = null,
+        CancellationToken ct = default)
+    {
+        var wiTypeName = type switch
+        {
+            Domain.Enums.AdoWorkItemType.UserStory => "User Story",
+            Domain.Enums.AdoWorkItemType.Task      => "Task",
+            Domain.Enums.AdoWorkItemType.Bug       => "Bug",
+            Domain.Enums.AdoWorkItemType.Epic      => "Epic",
+            _                                      => "User Story"
+        };
+
+        var patch = new[]
+        {
+            new PatchOp("add", "/fields/System.Title",       title),
+            new PatchOp("add", "/fields/System.Description", description),
+            new PatchOp("add", "/fields/System.Tags",        tags is null ? string.Empty : string.Join("; ", tags)),
+            new PatchOp("add", "/fields/System.AreaPath",    project)
+        };
+
+        var url = $"{project}/_apis/wit/workitems/${Uri.EscapeDataString(wiTypeName)}?api-version=7.1";
+
+        using var request = new HttpRequestMessage(HttpMethod.Post, url)
+        {
+            Content = new StringContent(JsonSerializer.Serialize(patch, JsonOpts),
+                System.Text.Encoding.UTF8, "application/json-patch+json")
+        };
+
+        var response = await _http.SendAsync(request, ct);
+        response.EnsureSuccessStatusCode();
+
+        var result = await response.Content.ReadFromJsonAsync<AdoWorkItemApiResponse>(JsonOpts, ct)
+            ?? throw new InvalidOperationException("Empty ADO response");
+
+        _logger.LogInformation("[ADO Boards] Created {Type} #{Id}: {Title}", wiTypeName, result.Id, title);
+
+        return new AdoWorkItemResult(
+            result.Id,
+            result.Links?.Html?.Href ?? string.Empty,
+            result.Fields?.SystemState ?? "New");
+    }
+
+    public async Task<AdoWorkItemResult> UpdateWorkItemAsync(
+        int workItemId,
+        string project,
+        string? title = null,
+        string? description = null,
+        string? state = null,
+        CancellationToken ct = default)
+    {
+        var ops = new List<PatchOp>();
+        if (title is not null) ops.Add(new PatchOp("replace", "/fields/System.Title", title));
+        if (description is not null) ops.Add(new PatchOp("replace", "/fields/System.Description", description));
+        if (state is not null) ops.Add(new PatchOp("replace", "/fields/System.State", state));
+
+        var url = $"{project}/_apis/wit/workitems/{workItemId}?api-version=7.1";
+
+        using var request = new HttpRequestMessage(new HttpMethod("PATCH"), url)
+        {
+            Content = new StringContent(JsonSerializer.Serialize(ops, JsonOpts),
+                System.Text.Encoding.UTF8, "application/json-patch+json")
+        };
+
+        var response = await _http.SendAsync(request, ct);
+        response.EnsureSuccessStatusCode();
+
+        var result = await response.Content.ReadFromJsonAsync<AdoWorkItemApiResponse>(JsonOpts, ct)!;
+        return new AdoWorkItemResult(result!.Id, result.Links?.Html?.Href ?? string.Empty, result.Fields?.SystemState ?? string.Empty);
+    }
+
+    public async Task AddChildTasksAsync(
+        int parentWorkItemId,
+        string project,
+        IEnumerable<string> taskTitles,
+        CancellationToken ct = default)
+    {
+        foreach (var taskTitle in taskTitles)
+        {
+            var childResult = await CreateWorkItemAsync(project, Domain.Enums.AdoWorkItemType.Task, taskTitle, string.Empty, ct: ct);
+
+            // Link child to parent
+            var linkPatch = new[]
+            {
+                new
+                {
+                    op = "add",
+                    path = "/relations/-",
+                    value = new
+                    {
+                        rel = "System.LinkTypes.Hierarchy-Reverse",
+                        url = $"https://dev.azure.com/{_options.Organisation}/{project}/_apis/wit/workitems/{parentWorkItemId}",
+                        attributes = new { comment = "Generated by PDLC AI" }
+                    }
+                }
+            };
+
+            var url = $"{project}/_apis/wit/workitems/{childResult.Id}?api-version=7.1";
+            using var request = new HttpRequestMessage(new HttpMethod("PATCH"), url)
+            {
+                Content = new StringContent(JsonSerializer.Serialize(linkPatch),
+                    System.Text.Encoding.UTF8, "application/json-patch+json")
+            };
+            await _http.SendAsync(request, ct);
+        }
+    }
+
+    // ── Wire types ────────────────────────────────────────────────────────────
+
+    private record PatchOp(string Op, string Path, string? Value);
+
+    private sealed class AdoWorkItemApiResponse
+    {
+        public int Id { get; set; }
+        [JsonPropertyName("_links")] public AdoLinks? Links { get; set; }
+        public AdoFields? Fields { get; set; }
+    }
+
+    private sealed class AdoLinks
+    {
+        public AdoHtmlLink? Html { get; set; }
+    }
+
+    private sealed class AdoHtmlLink
+    {
+        public string Href { get; set; } = string.Empty;
+    }
+
+    private sealed class AdoFields
+    {
+        [JsonPropertyName("System.State")] public string? SystemState { get; set; }
+    }
+}
+
+public sealed class AdoOptions
+{
+    public const string Section = "Ado";
+    public string Organisation { get; set; } = string.Empty;
+    public string PersonalAccessToken { get; set; } = string.Empty;
+    public string DefaultProject { get; set; } = string.Empty;
+}

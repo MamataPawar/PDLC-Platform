@@ -1,0 +1,65 @@
+# ── Template: Build & Lint ────────────────────────────────────
+# Restores, builds, and lints both .NET and Angular projects.
+# Hard gate — failure blocks all downstream stages.
+
+parameters:
+  - name: dotnetVersion
+    type: string
+  - name: nodeVersion
+    type: string
+  - name: backendPath
+    type: string
+  - name: frontendPath
+    type: string
+
+jobs:
+  - job: dotnet_build_lint
+    displayName: '.NET Build & Format Check'
+    steps:
+      - task: UseDotNet@2
+        displayName: 'Install .NET ${{ parameters.dotnetVersion }}'
+        inputs:
+          version: ${{ parameters.dotnetVersion }}
+          includePreviewVersions: false
+
+      - script: dotnet restore ${{ parameters.backendPath }}/Pdlc.sln
+        displayName: 'dotnet restore'
+
+      - script: dotnet build ${{ parameters.backendPath }}/Pdlc.sln --no-restore --configuration Release
+        displayName: 'dotnet build'
+
+      - script: |
+          dotnet format ${{ parameters.backendPath }}/Pdlc.sln \
+            --verify-no-changes \
+            --severity warn \
+            --verbosity diagnostic
+        displayName: 'dotnet format (style enforcement)'
+        # Fails pipeline if any file would be reformatted
+
+      - script: |
+          dotnet tool install --global dotnet-reportgenerator-globaltool 2>/dev/null || true
+        displayName: 'Install coverage tools'
+
+  - job: angular_build_lint
+    displayName: 'Angular Lint & Type Check'
+    steps:
+      - task: NodeTool@0
+        displayName: 'Install Node ${{ parameters.nodeVersion }}'
+        inputs:
+          versionSpec: ${{ parameters.nodeVersion }}
+
+      - script: npm ci
+        displayName: 'npm ci'
+        workingDirectory: ${{ parameters.frontendPath }}
+
+      - script: npx ng lint --max-warnings=0
+        displayName: 'Angular ESLint (zero warnings allowed)'
+        workingDirectory: ${{ parameters.frontendPath }}
+
+      - script: npx prettier --check "src/**/*.{ts,html,scss}"
+        displayName: 'Prettier format check'
+        workingDirectory: ${{ parameters.frontendPath }}
+
+      - script: npx tsc --noEmit --strict
+        displayName: 'TypeScript strict type-check'
+        workingDirectory: ${{ parameters.frontendPath }}

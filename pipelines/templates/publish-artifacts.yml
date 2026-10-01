@@ -1,0 +1,82 @@
+# ── Template: Publish Artifacts ──────────────────────────────
+# Builds .NET in Release mode, builds Angular for production,
+# publishes both as pipeline artifacts for deployment.
+
+parameters:
+  - name: dotnetVersion
+    type: string
+  - name: nodeVersion
+    type: string
+  - name: backendPath
+    type: string
+  - name: frontendPath
+    type: string
+
+jobs:
+  - job: publish_backend
+    displayName: 'Publish .NET API'
+    steps:
+      - task: UseDotNet@2
+        displayName: 'Install .NET ${{ parameters.dotnetVersion }}'
+        inputs:
+          version: ${{ parameters.dotnetVersion }}
+
+      - script: dotnet restore ${{ parameters.backendPath }}/Pdlc.sln
+        displayName: 'Restore'
+
+      - script: |
+          dotnet publish \
+            ${{ parameters.backendPath }}/Pdlc.Api/Pdlc.Api.csproj \
+            --configuration Release \
+            --output $(Build.ArtifactStagingDirectory)/pdlc-api \
+            --no-restore
+        displayName: 'dotnet publish (Release)'
+
+      - task: PublishPipelineArtifact@1
+        displayName: 'Upload pdlc-api artifact'
+        inputs:
+          targetPath: '$(Build.ArtifactStagingDirectory)/pdlc-api'
+          artifact: 'pdlc-api'
+          publishLocation: 'pipeline'
+
+  - job: publish_frontend
+    displayName: 'Publish Angular App (Production)'
+    steps:
+      - task: NodeTool@0
+        displayName: 'Install Node ${{ parameters.nodeVersion }}'
+        inputs:
+          versionSpec: ${{ parameters.nodeVersion }}
+
+      - script: npm ci
+        displayName: 'npm ci'
+        workingDirectory: ${{ parameters.frontendPath }}
+
+      - script: npx ng build --configuration production
+        displayName: 'ng build --prod'
+        workingDirectory: ${{ parameters.frontendPath }}
+
+      - task: PublishPipelineArtifact@1
+        displayName: 'Upload pdlc-console artifact'
+        inputs:
+          targetPath: '${{ parameters.frontendPath }}/dist/pdlc-console'
+          artifact: 'pdlc-console'
+          publishLocation: 'pipeline'
+
+  - job: publish_summary
+    displayName: 'Build Summary'
+    dependsOn:
+      - publish_backend
+      - publish_frontend
+    condition: always()
+    steps:
+      - script: |
+          echo "╔══════════════════════════════════════╗"
+          echo "║  PDLC Platform — Build Complete      ║"
+          echo "╚══════════════════════════════════════╝"
+          echo ""
+          echo "  Backend artifact  : pdlc-api"
+          echo "  Frontend artifact : pdlc-console"
+          echo "  Build ID          : $(Build.BuildId)"
+          echo "  Source branch     : $(Build.SourceBranch)"
+          echo "  Triggered by      : $(Build.RequestedFor)"
+        displayName: 'Print build summary'

@@ -1,0 +1,86 @@
+@use '@angular/material' as mat;
+
+$primary: mat.define-palette(mat.$indigo-palette, 600);
+$accent:  mat.define-palette(mat.$amber-palette, 600);
+$warn:    mat.define-palette(mat.$red-palette);
+
+$theme: mat.define-light-theme((
+  color: (primary: $primary, accent: $accent, warn: $warn),
+  typography: mat.define-typography-config($font-family: 'Inter, sans-serif'),
+  density: -1
+));
+
+@include mat.all-component-themes($theme);
+
+*, *::before, *::after { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  font-family: 'Inter', sans-serif;
+  background: #f5f6fa;
+  color: #1a1a2e;
+}
+
+/* ── Page layout helpers ────────────────────────────── */
+
+.page-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 24px;
+
+  h1 { margin: 0; font-size: 1.5rem; font-weight: 600; }
+}
+
+.card {
+  background: white;
+  border-radius: 8px;
+  box-shadow: 0 1px 3px rgba(0,0,0,.08);
+  padding: 24px;
+}
+
+/* ── Badges ─────────────────────────────────────────── */
+
+.badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 9999px;
+  font-size: .72rem;
+  font-weight: 600;
+
+  &.green  { background: #d1fae5; color: #065f46; }
+  &.yellow { background: #fef3c7; color: #92400e; }
+  &.red    { background: #fee2e2; color: #991b1b; }
+  &.blue   { background: #dbeafe; color: #1e40af; }
+  &.gray   { background: #f3f4f6; color: #374151; }
+}
+
+/* ── Loading ────────────────────────────────────────── */
+
+.loading-center {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: 60px;
+}
+
+/* ── Code blocks ────────────────────────────────────── */
+
+pre.code-block {
+  background: #1e2536;
+  color: #e2e8f0;
+  border-radius: 6px;
+  padding: 16px;
+  font-size: .78rem;
+  overflow: auto;
+  max-height: 600px;
+  white-space: pre-wrap;
+  word-break: break-word;
+  line-height: 1.5;
+  margin: 0;
+}
+
+/* ── Material overrides ─────────────────────────────── */
+
+.mat-mdc-tab-body-wrapper { padding-top: 0; }
+mat-form-field { font-family: 'Inter', sans-serif; }

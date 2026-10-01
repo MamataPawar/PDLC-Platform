@@ -1,0 +1,36 @@
+{
+  "schema": "1.0",
+  "description": "Maps each PDLC stage to its versioned system prompt files. Loaded at runtime by FilePromptRepository.",
+  "stages": {
+    "Requirements": {
+      "current": "v1",
+      "versions": {
+        "v1": "v1/stage1-requirements.md"
+      }
+    },
+    "Design": {
+      "current": "v1",
+      "versions": {
+        "v1": "v1/stage2-architecture.md"
+      }
+    },
+    "CodeGen": {
+      "current": "v1",
+      "versions": {
+        "v1": "v1/stage3a-codegen.md"
+      }
+    },
+    "PrReview": {
+      "current": "v1",
+      "versions": {
+        "v1": "v1/stage3b-pr-review.md"
+      }
+    },
+    "TestGen": {
+      "current": "v1",
+      "versions": {
+        "v1": "v1/stage4-testgen.md"
+      }
+    }
+  }
+}
