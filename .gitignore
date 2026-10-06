@@ -1,0 +1,30 @@
+# .NET build and test output
+**/bin/
+**/obj/
+**/TestResults/
+*.trx
+
+# Angular dependencies, cache, and build output
+**/node_modules/
+**/.angular/
+**/dist/
+**/coverage/
+
+# Application logs
+**/logs/
+*.log
+
+# Local environment and secrets
+.env
+.env.*
+!.env.example
+
+# IDE files
+.vs/
+.idea/
+*.user
+*.suo
+
+# OS files
+.DS_Store
+Thumbs.db
