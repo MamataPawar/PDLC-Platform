@@ -1,3 +1,7 @@
+# azure-pipelines.yml — no changes needed to the YAML itself
+# ADO pipeline connected to GitHub automatically gets push + PR triggers
+# The pipeline YAML can live in your GitHub repo at pipelines/azure-pipelines.yml
+
 # ============================================================
 # Retail PDLC Platform — Azure Pipelines
 # All 5 stages: lint → ai-review → test → ai-testgen → publish

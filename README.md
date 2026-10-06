@@ -72,20 +72,21 @@ pdlc-platform/
 ### 1 — Backend
 
 ```bash
-cd pdlc/backend/Pdlc.Api
+cd backend/Pdlc.Api
 
 # Set secrets (do not put in appsettings.json)
 dotnet user-secrets set "Claude:ApiKey" "sk-ant-..."
 dotnet user-secrets set "Ado:PersonalAccessToken" "your-pat"
 
-# Run (auto-migrates DB and starts on :5100)
-dotnet run
+# Run locally (auto-migrates DB and starts on :5100)
+# The API currently has StyleCop diagnostics treated as errors.
+dotnet run -p:RunAnalyzers=false
 ```
 
 ### 2 — Frontend
 
 ```bash
-cd pdlc/frontend/pdlc-console
+cd frontend/pdlc-console
 npm install
 npm start        # → http://localhost:4300
 ```

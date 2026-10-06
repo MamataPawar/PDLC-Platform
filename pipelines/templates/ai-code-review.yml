@@ -39,7 +39,7 @@ jobs:
             -d '{
               "adoProject":      "${{ parameters.adoProject }}",
               "repository":      "${{ parameters.adoRepo }}",
-              "pullRequestId":   ${{ parameters.pullRequestId }},
+              "pullRequestId":   ${{ System.PullRequest.PullRequestId }},
               "promptVersion":   "v1",
               "postCommentsToAdo": true
             }')

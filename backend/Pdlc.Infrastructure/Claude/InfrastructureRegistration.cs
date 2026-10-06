@@ -63,6 +63,14 @@ public static class InfrastructureRegistration
             client.DefaultRequestHeaders.Add("Authorization", $"Basic {pat}");
         });
 
+        // add alongside the ADO HttpClient registration
+        // services.AddHttpClient<IAdoReposService, GitHubReposService>((sp, client) =>
+        // {
+        //     var githubPat = configuration["GitHub:PersonalAccessToken"]!;
+        //     client.DefaultRequestHeaders.Add("Authorization", $"Bearer {githubPat}");
+        //     client.DefaultRequestHeaders.Add("User-Agent", "pdlc-ai-review");
+        // });
+
         // ── Prompt repository ─────────────────────────────────────────────────
         services.AddSingleton<IPromptRepository, FilePromptRepository>();
 
